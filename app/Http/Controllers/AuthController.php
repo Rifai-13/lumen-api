@@ -1,94 +1,92 @@
 <?php
+// app/Http/Controllers/AuthController.php
 
 namespace App\Http\Controllers;
 
 use App\Models\User;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Support\Str;
-use Illuminate\Support\Facades\Log;
 
 class AuthController extends Controller
 {
-    public function register(Request $request)
-    {
-        $this->validate($request, [
-            'name' => 'required',
-            'email' => 'required|email|unique:users',
-            'password' => 'required|min:6'
-        ]);
+    /**
+     * HAPUS METHOD REGISTER - Tidak digunakan lagi
+     */
 
-        $user = User::create([
-            'name' => $request->name,
-            'email' => $request->email,
-            'password' => Hash::make($request->password),
-            'api_token' => Str::random(40)
-        ]);
-
-        return response()->json(['message' => 'Registrasi Berhasil', 'data' => $user], 201);
-    }
-
+    /**
+     * Login user
+     */
     public function login(Request $request)
     {
-        $this->validate($request, [
+        $validator = Validator::make($request->all(), [
             'email' => 'required|email',
-            'password' => 'required'
+            'password' => 'required|string',
         ]);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'success' => false,
+                'errors' => $validator->errors()
+            ], 422);
+        }
 
         $user = User::where('email', $request->email)->first();
 
-        if ($user && Hash::check($request->password, $user->password)) {
-            $token = Str::random(40);
-            $user->update(['api_token' => $token]);
-
+        if (!$user || !Hash::check($request->password, $user->password)) {
             return response()->json([
-                'message' => 'Login Berhasil',
-                'token' => $token,
-                'user' => $user
-            ]);
+                'success' => false,
+                'message' => 'Invalid credentials'
+            ], 401);
         }
 
-        return response()->json(['message' => 'Email atau Password salah'], 401);
+        // Update token
+        $user->update(['api_token' => Str::random(60)]);
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'token' => $user->api_token,
+                'user' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $user->getRoleNames()->first() ?? 'staff',
+                ]
+            ]
+        ]);
     }
 
+    /**
+     * Get current user
+     */
+    public function me(Request $request)
+    {
+        $user = $request->user();
+        
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'id' => $user->id,
+                'name' => $user->name,
+                'email' => $user->email,
+                'role' => $user->getRoleNames()->first() ?? 'staff',
+                'permissions' => $user->getAllPermissions()->pluck('name')
+            ]
+        ]);
+    }
+
+    /**
+     * Logout user
+     */
     public function logout(Request $request)
     {
-        $user = $request->user();
-        
-        if ($user) {
-            $user->api_token = null;
-            $user->save();
-            
-            return response()->json([
-                'message' => 'Logout berhasil'
-            ]);
-        }
+        $request->user()->update(['api_token' => null]);
         
         return response()->json([
-            'message' => 'User tidak ditemukan'
-        ], 404);
-    }
-
-    public function user(Request $request)
-    {
-        $user = $request->user();
-
-        $user->load('roles');
-
-        Log::info('User roles:', [
-            'user_id' => $user->id,
-            'email' => $user->email,
-            'roles' => $user->roles->pluck('name')->toArray()
-        ]);
-
-        $roleName = $user->roles->first()?->name ?? 'staff';
-
-        return response()->json([
-            'id' => $user->id,
-            'name' => $user->name,
-            'email' => $user->email,
-            'role' => $roleName,
-            'roles' => $user->roles->pluck('name')
+            'success' => true,
+            'message' => 'Successfully logged out'
         ]);
     }
 }

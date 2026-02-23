@@ -12,6 +12,18 @@ return [
             'provider' => 'users',
             'hash' => false,
         ],
+        'manager' => [
+            'driver' => 'api',
+            'provider' => 'users',
+        ],
+        'admin' => [
+            'driver' => 'api',
+            'provider' => 'users',
+        ],
+        'staff' => [
+            'driver' => 'api',
+            'provider' => 'users',
+        ],
     ],
 
     'providers' => [

@@ -1,4 +1,5 @@
 <?php
+// app/Models/User.php
 
 namespace App\Models;
 
@@ -10,28 +11,30 @@ use Illuminate\Database\Eloquent\Model;
 use Laravel\Lumen\Auth\Authorizable;
 use Spatie\Permission\Traits\HasRoles;
 
-
 class User extends Model implements AuthenticatableContract, AuthorizableContract
 {
-    use Authenticatable, Authorizable, HasRoles, HasFactory;
+    use Authenticatable, Authorizable, HasFactory, HasRoles;
 
-    /**
-     * The attributes that are mass assignable.
-     *
-     * @var string[]
-     */
-    protected $guard_name = 'api';
-    
     protected $fillable = [
-        'name', 'email', 'api_token', 'password',
+        'name', 
+        'email', 
+        'password',
+        'api_token'  // ✅ Token ada di sini, sesuai tabel
     ];
 
-    /**
-     * The attributes excluded from the model's JSON form.
-     *
-     * @var string[]
-     */
     protected $hidden = [
         'password',
+        'api_token'  // Sembunyikan dari response JSON
     ];
+
+    protected $casts = [
+        'email_verified_at' => 'datetime',
+        'password' => 'hashed',
+    ];
+
+    // Relasi ke donations (jika user berdonasi)
+    public function donations()
+    {
+        return $this->hasMany(Donation::class, 'user_id');
+    }
 }

@@ -1,4 +1,5 @@
 <?php
+// app/Http/Middleware/RoleMiddleware.php
 
 namespace App\Http\Middleware;
 
@@ -8,36 +9,36 @@ use Illuminate\Support\Facades\Log;
 
 class RoleMiddleware
 {
-    public function handle(Request $request, Closure $next, $role)
+    public function handle(Request $request, Closure $next, ...$roles)
     {
-        // Ambil user dari request (set oleh Authenticate middleware)
         $user = $request->user();
         
         if (!$user) {
             return response()->json([
-                'message' => 'User is not logged in.',
-                'error' => 'Unauthorized'
+                'success' => false,
+                'message' => 'User is not logged in.'
             ], 401);
         }
         
-        Log::info('Role check:', [
-            'user_id' => $user->id,
-            'user_email' => $user->email,
-            'user_roles' => $user->getRoleNames()->toArray(),
-            'required_role' => $role,
-            'has_role' => $user->hasRole($role)
-        ]);
+        Log::info('========== ROLE MIDDLEWARE CHECK ==========');
+        Log::info('User ID: ' . $user->id);
+        Log::info('User Email: ' . $user->email);
+        Log::info('User Roles: ' . json_encode($user->getRoleNames()));
+        Log::info('Required Roles: ' . implode(', ', $roles));
         
-        // Cek apakah user memiliki role yang diminta
-        if (!$user->hasRole($role)) {
-            return response()->json([
-                'message' => 'Forbidden - You do not have the required role',
-                'required' => $role,
-                'your_roles' => $user->getRoleNames(),
-                'user_id' => $user->id
-            ], 403);
+        // Cek apakah user memiliki SALAH SATU dari role yang diperlukan
+        foreach ($roles as $role) {
+            if ($user->hasRole($role)) {
+                Log::info('✅ Access GRANTED for role: ' . $role);
+                return $next($request);
+            }
         }
         
-        return $next($request);
+        return response()->json([
+            'success' => false,
+            'message' => 'Forbidden - You do not have the required role',
+            'required_roles' => $roles,
+            'your_roles' => $user->getRoleNames()
+        ], 403);
     }
 }
