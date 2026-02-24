@@ -33,16 +33,7 @@ class Campaign extends Model
         'updated_at' => 'datetime'
     ];
 
-    protected static function boot()
-    {
-        parent::boot();
-        
-        static::creating(function ($campaign) {
-            $campaign->slug = Str::slug($campaign->name) . '-' . uniqid();
-        });
-    }
-
-    // Accessor untuk progress percentage
+    // Accessor untuk progress
     public function getProgressAttribute()
     {
         if ($this->goal > 0) {
@@ -51,7 +42,7 @@ class Campaign extends Model
         return 0;
     }
 
-    // Accessor untuk sisa goal
+    // Accessor untuk remaining
     public function getRemainingAttribute()
     {
         return max($this->goal - $this->raised, 0);
@@ -67,17 +58,5 @@ class Campaign extends Model
     public function scopeInactive($query)
     {
         return $query->where('status', 'Inactive');
-    }
-
-    // Scope untuk campaign berdasarkan kategori
-    public function scopeByCategory($query, $category)
-    {
-        return $query->where('category', $category);
-    }
-
-    // Relasi ke donations (jika ada)
-    public function donations()
-    {
-        return $this->hasMany(Donation::class, 'campaign_id');
     }
 }
