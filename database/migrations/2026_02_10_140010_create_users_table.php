@@ -16,6 +16,8 @@ return new class extends Migration
             $table->string('name');
             $table->string('email')->unique();
             $table->string('password');
+            $table->string('position')->nullable();
+            $table->string('avatar')->nullable();
             $table->string('api_token', 80)->unique()->nullable();
             $table->timestamps();
         });

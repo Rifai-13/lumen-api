@@ -9,32 +9,22 @@ use Illuminate\Contracts\Auth\Authenticatable as AuthenticatableContract;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Laravel\Lumen\Auth\Authorizable;
-use Spatie\Permission\Traits\HasRoles;
+use Spatie\Permission\Traits\HasRoles; // WAJIB ADA!
 
 class User extends Model implements AuthenticatableContract, AuthorizableContract
 {
-    use Authenticatable, Authorizable, HasFactory, HasRoles;
+    use Authenticatable, Authorizable, HasFactory, HasRoles; // HasRoles HARUS ADA
 
     protected $fillable = [
-        'name', 
-        'email', 
-        'password',
-        'api_token'  // ✅ Token ada di sini, sesuai tabel
+        'name', 'email', 'password', 'api_token', 'avatar', 'position'
     ];
 
     protected $hidden = [
-        'password',
-        'api_token'  // Sembunyikan dari response JSON
+        'password', 'api_token',
     ];
 
-    protected $casts = [
-        'email_verified_at' => 'datetime',
-        'password' => 'hashed',
-    ];
-
-    // Relasi ke donations (jika user berdonasi)
-    public function donations()
+    public function sessions()
     {
-        return $this->hasMany(Donation::class, 'user_id');
+        return $this->hasMany(Session::class);
     }
 }

@@ -12,37 +12,37 @@ use Illuminate\Support\Facades\Storage;
 
 class CampaignController extends Controller
 {
-     /**
+    /**
      * GET /campaigns - List all campaigns
      */
     public function index(Request $request)
     {
         try {
             Log::info('Fetching campaigns with params:', $request->all());
-            
+
             $query = Campaign::query();
-            
+
             // Search filter
             if ($request->has('search') && !empty($request->search)) {
                 $search = $request->search;
-                $query->where(function($q) use ($search) {
+                $query->where(function ($q) use ($search) {
                     $q->where('name', 'LIKE', "%{$search}%")
-                      ->orWhere('description', 'LIKE', "%{$search}%")
-                      ->orWhere('category', 'LIKE', "%{$search}%");
+                        ->orWhere('description', 'LIKE', "%{$search}%")
+                        ->orWhere('category', 'LIKE', "%{$search}%");
                 });
             }
-            
+
             // Status filter
             if ($request->has('status') && $request->status !== 'all') {
                 $query->where('status', $request->status);
             }
-            
+
             // Pagination
             $perPage = $request->get('per_page', 10);
             $campaigns = $query->orderBy('created_at', 'desc')->paginate($perPage);
-            
+
             Log::info('Found ' . $campaigns->total() . ' campaigns');
-            
+
             return response()->json([
                 'success' => true,
                 'data' => $campaigns->items(),
@@ -51,7 +51,6 @@ class CampaignController extends Controller
                 'per_page' => $campaigns->perPage(),
                 'total' => $campaigns->total()
             ]);
-            
         } catch (\Exception $e) {
             Log::error('Error fetching campaigns: ' . $e->getMessage());
             return response()->json([
@@ -68,26 +67,26 @@ class CampaignController extends Controller
     {
         try {
             Log::info('Fetching campaign stats');
-            
+
             $totalCampaigns = Campaign::count();
             $activeCampaigns = Campaign::where('status', 'Active')->count();
             $totalRaised = Campaign::sum('raised') ?? 0;
             $totalDonors = Campaign::sum('donors') ?? 0;
-            
+
             // Calculate average progress
             $campaigns = Campaign::select('raised', 'goal')->get();
             $totalProgress = 0;
             $count = 0;
-            
+
             foreach ($campaigns as $campaign) {
                 if ($campaign->goal > 0) {
                     $totalProgress += min(($campaign->raised / $campaign->goal) * 100, 100);
                     $count++;
                 }
             }
-            
+
             $averageProgress = $count > 0 ? round($totalProgress / $count, 2) : 0;
-            
+
             return response()->json([
                 'success' => true,
                 'data' => [
@@ -98,7 +97,6 @@ class CampaignController extends Controller
                     'average_progress' => (float) $averageProgress
                 ]
             ]);
-            
         } catch (\Exception $e) {
             Log::error('Error fetching stats: ' . $e->getMessage());
             return response()->json([
@@ -107,24 +105,43 @@ class CampaignController extends Controller
             ], 500);
         }
     }
-    
+
+    /**
+     * GET /campaigns/{id} - Get single campaign
+     */
+    public function show($id)
+    {
+        try {
+            $campaign = Campaign::find($id);
+
+            if (!$campaign) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Campaign not found'
+                ], 404);
+            }
+
+            return response()->json([
+                'success' => true,
+                'data' => $campaign
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching campaign: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch campaign'
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /campaigns - Create new campaign
+     */
     public function store(Request $request)
     {
-        // Debug semua input
         Log::info('========== CAMPAIGN STORE DEBUG ==========');
         Log::info('All request:', $request->all());
         Log::info('Has file: ' . ($request->hasFile('image') ? 'YES' : 'NO'));
-        
-        if ($request->hasFile('image')) {
-            $file = $request->file('image');
-            Log::info('File exists: ' . ($file ? 'YES' : 'NO'));
-            Log::info('File is valid: ' . ($file->isValid() ? 'YES' : 'NO'));
-            Log::info('File name: ' . $file->getClientOriginalName());
-            Log::info('File size: ' . $file->getSize());
-            Log::info('File mime: ' . $file->getMimeType());
-            Log::info('File error: ' . $file->getError());
-            Log::info('File error message: ' . $file->getErrorMessage());
-        }
 
         try {
             $validator = Validator::make($request->all(), [
@@ -146,30 +163,28 @@ class CampaignController extends Controller
             }
 
             $imagePath = null;
-            
+
             if ($request->hasFile('image') && $request->file('image')->isValid()) {
                 $image = $request->file('image');
-                
+
                 // Generate unique filename
                 $filename = time() . '_' . Str::slug($request->name) . '.' . $image->getClientOriginalExtension();
-                
-                // Pastikan folder ada
-                $folder = storage_path('app/public/campaigns');
-                if (!file_exists($folder)) {
-                    mkdir($folder, 0777, true);
-                    Log::info('Created folder: ' . $folder);
+
+                // Simpan di public/images/campaigns
+                $destinationPath = base_path('public/images/campaigns');
+
+                if (!file_exists($destinationPath)) {
+                    mkdir($destinationPath, 0777, true);
+                    Log::info('Created folder: ' . $destinationPath);
                 }
-                
-                // Simpan file
-                $path = $image->move($folder, $filename);
-                
-                if ($path) {
-                    $imagePath = url('storage/campaigns/' . $filename);
-                    Log::info('File saved to: ' . $path);
-                    Log::info('URL: ' . $imagePath);
-                } else {
-                    Log::error('Failed to move file');
-                }
+
+                // Pindahkan file
+                $image->move($destinationPath, $filename);
+
+                // Buat URL
+                $imagePath = url('images/campaigns/' . $filename);
+                Log::info('Image saved to: ' . $destinationPath . '/' . $filename);
+                Log::info('Image URL: ' . $imagePath);
             }
 
             $campaign = Campaign::create([
@@ -193,16 +208,216 @@ class CampaignController extends Controller
                 'message' => 'Campaign created successfully',
                 'data' => $campaign
             ], 201);
-
         } catch (\Exception $e) {
             Log::error('EXCEPTION: ' . $e->getMessage());
             Log::error('File: ' . $e->getFile());
             Log::error('Line: ' . $e->getLine());
-            Log::error('Trace: ' . $e->getTraceAsString());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Server error: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * POST /campaigns/{id} - Update campaign
+     */
+    public function update(Request $request, $id)
+    {
+        Log::info('========== UPDATE CAMPAIGN ==========');
+        Log::info('Campaign ID: ' . $id);
+        Log::info('All request:', $request->all());
+        Log::info('Has file: ' . ($request->hasFile('image') ? 'YES' : 'NO'));
+
+        try {
+            $campaign = Campaign::find($id);
+
+            if (!$campaign) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Campaign not found'
+                ], 404);
+            }
+
+            // Validasi
+            $validator = Validator::make($request->all(), [
+                'name' => 'required|string|max:255',
+                'description' => 'nullable|string',
+                'goal' => 'required|numeric|min:1',
+                'category' => 'required|string',
+                'start_date' => 'required|date',
+                'end_date' => 'required|date|after:start_date',
+                'image' => 'nullable|image|mimes:jpeg,png,jpg|max:2048'
+            ]);
+
+            if ($validator->fails()) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Validation failed',
+                    'errors' => $validator->errors()
+                ], 422);
+            }
+
+            // Update data
+            $campaign->name = $request->name;
+            $campaign->description = $request->description ?? $campaign->description;
+            $campaign->category = $request->category;
+            $campaign->goal = $request->goal;
+            $campaign->start_date = $request->start_date;
+            $campaign->end_date = $request->end_date;
+
+            // Handle image upload
+            if ($request->hasFile('image')) {
+                // Delete old image if exists
+                if ($campaign->image) {
+                    $oldFilename = basename($campaign->image);
+                    $oldPath = base_path('public/images/campaigns/' . $oldFilename);
+                    if (file_exists($oldPath)) {
+                        unlink($oldPath);
+                        Log::info('Deleted old image: ' . $oldPath);
+                    }
+                }
+
+                $image = $request->file('image');
+                $filename = time() . '_' . uniqid() . '.' . $image->getClientOriginalExtension();
+
+                // Simpan di public/images/campaigns
+                $destinationPath = base_path('public/images/campaigns');
+
+                if (!file_exists($destinationPath)) {
+                    mkdir($destinationPath, 0777, true);
+                }
+
+                // Pindahkan file
+                $image->move($destinationPath, $filename);
+
+                // Buat URL
+                $campaign->image = url('images/campaigns/' . $filename);
+
+                Log::info('New image uploaded: ' . $campaign->image);
+            }
+
+            // Handle image removal
+            if ($request->has('remove_image') && $request->remove_image == '1') {
+                if ($campaign->image) {
+                    $oldFilename = basename($campaign->image);
+                    $oldPath = base_path('public/images/campaigns/' . $oldFilename);
+                    if (file_exists($oldPath)) {
+                        unlink($oldPath);
+                        Log::info('Removed image: ' . $oldPath);
+                    }
+                    $campaign->image = null;
+                }
+            }
+
+            $campaign->save();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Campaign updated successfully',
+                'data' => $campaign
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Update error: ' . $e->getMessage());
+            Log::error('Stack trace: ' . $e->getTraceAsString());
+
+            return response()->json([
+                'success' => false,
+                'message' => 'Update failed: ' . $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * DELETE /campaigns/{id} - Delete campaign
+     */
+    public function destroy($id)
+    {
+        try {
+            $campaign = Campaign::find($id);
+
+            if (!$campaign) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Campaign not found'
+                ], 404);
+            }
+
+            // Delete image if exists
+            if ($campaign->image) {
+                $filename = basename($campaign->image);
+                $imagePath = base_path('public/images/campaigns/' . $filename);
+                if (file_exists($imagePath)) {
+                    unlink($imagePath);
+                    Log::info('Deleted image: ' . $imagePath);
+                }
+            }
+
+            $campaign->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Campaign deleted successfully'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error deleting campaign: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to delete campaign'
+            ], 500);
+        }
+    }
+
+    // app/Http/Controllers/CampaignController.php
+
+    /**
+     * GET /public/campaigns - List all campaigns for public (no auth required)
+     */
+    public function publicIndex(Request $request)
+    {
+        try {
+            Log::info('Fetching public campaigns with params:', $request->all());
+
+            $query = Campaign::query();
+
+            // Hanya tampilkan campaign yang Active
+            $query->where('status', 'Active');
+
+            // Search filter
+            if ($request->has('search') && !empty($request->search)) {
+                $search = $request->search;
+                $query->where(function ($q) use ($search) {
+                    $q->where('name', 'LIKE', "%{$search}%")
+                        ->orWhere('description', 'LIKE', "%{$search}%")
+                        ->orWhere('category', 'LIKE', "%{$search}%");
+                });
+            }
+
+            // Filter by category
+            if ($request->has('category')) {
+                $query->where('category', $request->category);
+            }
+
+            // Pagination
+            $perPage = $request->get('per_page', 9);
+            $campaigns = $query->orderBy('created_at', 'desc')->paginate($perPage);
+
+            Log::info('Found ' . $campaigns->total() . ' public campaigns');
+
+            return response()->json([
+                'success' => true,
+                'data' => $campaigns->items(),
+                'current_page' => $campaigns->currentPage(),
+                'last_page' => $campaigns->lastPage(),
+                'per_page' => $campaigns->perPage(),
+                'total' => $campaigns->total()
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Error fetching public campaigns: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to fetch campaigns'
             ], 500);
         }
     }

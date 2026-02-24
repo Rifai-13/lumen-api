@@ -4,89 +4,245 @@
 namespace App\Http\Controllers;
 
 use App\Models\User;
+use App\Models\Session;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Support\Facades\Validator;
+use Illuminate\Support\Facades\Log;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Str;
+use Carbon\Carbon;
 
 class AuthController extends Controller
 {
     /**
-     * HAPUS METHOD REGISTER - Tidak digunakan lagi
+     * Login user and create session
      */
 
-    /**
-     * Login user
-     */
     public function login(Request $request)
     {
-        $validator = Validator::make($request->all(), [
-            'email' => 'required|email',
-            'password' => 'required|string',
-        ]);
+        try {
+            $this->validate($request, [
+                'email' => 'required|email',
+                'password' => 'required'
+            ]);
 
-        if ($validator->fails()) {
+            $user = User::where('email', $request->email)->first();
+
+            if (!$user || !Hash::check($request->password, $user->password)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Invalid credentials'
+                ], 401);
+            }
+
+            // HAPUS SEMUA SESSION LAMA (opsional)
+            Session::where('user_id', $user->id)->delete();
+
+            // Generate token yang BENAR (bukan user agent)
+            $sessionToken = Str::random(60); // Contoh: "kR9s2jFpL7qW4nX8vB3mZ6cH1tY5uA0eD8gF2jK5"
+
+            // PASTIKAN token unik
+            while (Session::where('id', $sessionToken)->exists()) {
+                $sessionToken = Str::random(60);
+            }
+
+            // Set masa berlaku 30 hari
+            $expiresAt = Carbon::now()->addDays(30);
+
+            // Buat session BARU - PASTIKAN 'id' TERISI DENGAN TOKEN!
+            $session = Session::create([
+                'id' => $sessionToken, // <- INI HARUS TOKEN RANDOM, BUKAN USER AGENT!
+                'user_id' => $user->id,
+                'ip_address' => $request->ip(),
+                'user_agent' => $request->userAgent(), // Ini untuk kolom user_agent
+                'payload' => json_encode([
+                    'created_at' => Carbon::now()->toDateTimeString(),
+                    'user_agent' => $request->userAgent()
+                ]),
+                'last_activity' => time(),
+                'expires_at' => $expiresAt
+            ]);
+
+            Log::info('Session created:', [
+                'session_id' => $sessionToken,
+                'session_id_prefix' => substr($sessionToken, 0, 10) . '...',
+                'user_id' => $user->id,
+                'expires_at' => $expiresAt
+            ]);
+
+            // Get user role
+            $userRole = $this->getUserRole($user);
+            $permissions = $this->getPermissionsForRole($userRole);
+
             return response()->json([
-                'success' => false,
-                'errors' => $validator->errors()
-            ], 422);
-        }
-
-        $user = User::where('email', $request->email)->first();
-
-        if (!$user || !Hash::check($request->password, $user->password)) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Invalid credentials'
-            ], 401);
-        }
-
-        // Update token
-        $user->update(['api_token' => Str::random(60)]);
-
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'token' => $user->api_token,
-                'user' => [
-                    'id' => $user->id,
-                    'name' => $user->name,
-                    'email' => $user->email,
-                    'role' => $user->getRoleNames()->first() ?? 'staff',
+                'success' => true,
+                'data' => [
+                    'token' => $sessionToken, // Kembalikan token ke frontend
+                    'user' => [
+                        'id' => $user->id,
+                        'name' => $user->name,
+                        'email' => $user->email,
+                        'role' => $userRole,
+                        'permissions' => $permissions,
+                        'avatar' => $user->avatar ?? null
+                    ]
                 ]
-            ]
-        ]);
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Login error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Login failed: ' . $e->getMessage()
+            ], 500);
+        }
     }
 
     /**
-     * Get current user
+     * Get current authenticated user
      */
     public function me(Request $request)
     {
-        $user = $request->user();
-        
-        return response()->json([
-            'success' => true,
-            'data' => [
-                'id' => $user->id,
-                'name' => $user->name,
-                'email' => $user->email,
-                'role' => $user->getRoleNames()->first() ?? 'staff',
-                'permissions' => $user->getAllPermissions()->pluck('name')
-            ]
+        try {
+            // Dapatkan user dari middleware
+            $user = $request->auth_user;
+
+            if (!$user) {
+                Log::warning('Me endpoint: No user found in request');
+                return response()->json([
+                    'success' => false,
+                    'message' => 'User not authenticated'
+                ], 401);
+            }
+
+            // Get user role
+            $userRole = $this->getUserRole($user);
+
+            // Dapatkan permissions LENGKAP berdasarkan role
+            $permissions = $this->getPermissionsForRole($userRole);
+
+            Log::info('Me endpoint success:', [
+                'user_id' => $user->id,
+                'role' => $userRole,
+                'permissions_count' => count($permissions)
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'data' => [
+                    'id' => $user->id,
+                    'name' => $user->name,
+                    'email' => $user->email,
+                    'role' => $userRole,
+                    'permissions' => $permissions, // Pastikan ini dikirim
+                    'avatar' => $user->avatar ?? null
+                ]
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Me error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Failed to get user data'
+            ], 500);
+        }
+    }
+    /**
+     * Get permissions based on role
+     */
+    private function getPermissionsForRole($role)
+    {
+        $permissions = [
+            'admin' => [
+                'view',
+                'create',
+                'edit',
+                'delete',
+                'view_campaigns',
+                'create_campaigns',
+                'edit_campaigns',
+                'delete_campaigns',
+                'view_users',
+                'create_users',
+                'edit_users',
+                'delete_users',
+                'manage_users',
+                'view_stats',
+                'export_data',
+                'manage_settings',
+                // Format dengan spasi juga
+                'view campaigns',
+                'create campaigns',
+                'edit campaigns',
+                'delete campaigns',
+                'view users',
+                'create users',
+                'edit users',
+                'delete users',
+                'manage users',
+            ],
+            'manager' => [
+                'view',
+                'create',
+                'edit',
+                'delete',
+                'view_campaigns',
+                'view_stats',
+                'export_data',
+            ],
+            'staff' => [
+                'view',
+                'view_campaigns',
+            ],
+        ];
+
+        Log::info('Getting permissions for role: ' . $role, [
+            'permissions' => $permissions[strtolower($role)] ?? $permissions['staff']
         ]);
+
+        return $permissions[strtolower($role)] ?? $permissions['staff'];
     }
 
     /**
-     * Logout user
+     * Logout user - delete session
      */
     public function logout(Request $request)
     {
-        $request->user()->update(['api_token' => null]);
-        
-        return response()->json([
-            'success' => true,
-            'message' => 'Successfully logged out'
-        ]);
+        try {
+            $token = str_replace('Bearer ', '', $request->header('Authorization'));
+
+            if ($token) {
+                Session::where('id', $token)->delete();
+            }
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Logged out successfully'
+            ]);
+        } catch (\Exception $e) {
+            Log::error('Logout error: ' . $e->getMessage());
+            return response()->json([
+                'success' => false,
+                'message' => 'Logout failed'
+            ], 500);
+        }
+    }
+
+    /**
+     * Get user role from relationship
+     */
+    private function getUserRole($user)
+    {
+        // Coba dari relasi roles (Spatie)
+        if (method_exists($user, 'roles') && $user->roles->count() > 0) {
+            return $user->roles->first()->name;
+        }
+
+        // Query manual ke tabel model_has_roles
+        $role = DB::table('model_has_roles')
+            ->join('roles', 'model_has_roles.role_id', '=', 'roles.id')
+            ->where('model_has_roles.model_id', $user->id)
+            ->where('model_has_roles.model_type', 'App\\Models\\User')
+            ->first();
+
+        return $role->name ?? 'staff';
     }
 }

@@ -1,4 +1,5 @@
 <?php
+// app/Http/Middleware/CorsMiddleware.php
 
 namespace App\Http\Middleware;
 
@@ -8,23 +9,24 @@ class CorsMiddleware
 {
     public function handle($request, Closure $next)
     {
-        $headers = [
-            'Access-Control-Allow-Origin'      => '*',
-            'Access-Control-Allow-Methods'     => 'POST, GET, OPTIONS, PUT, DELETE',
-            'Access-Control-Allow-Credentials' => 'true',
-            'Access-Control-Max-Age'           => '86400',
-            'Access-Control-Allow-Headers'     => 'Content-Type, Authorization, X-Requested-With'
-        ];
-
-        if ($request->isMethod('OPTIONS')) {
-            return response()->json('{"method":"OPTIONS"}', 200, $headers);
+        // Allow from any origin
+        $allowedOrigins = ['http://localhost:8080', 'http://localhost:3000'];
+        
+        $origin = $request->header('Origin');
+        
+        if (in_array($origin, $allowedOrigins)) {
+            header('Access-Control-Allow-Origin: ' . $origin);
+            header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
+            header('Access-Control-Allow-Headers: Content-Type, Authorization, X-Requested-With, Accept, X-HTTP-Method-Override');
+            header('Access-Control-Allow-Credentials: true');
+            header('Access-Control-Max-Age: 86400');
         }
 
-        $response = $next($request);
-        foreach ($headers as $key => $value) {
-            $response->header($key, $value);
+        // Handle preflight OPTIONS request
+        if ($request->getMethod() === 'OPTIONS') {
+            return response()->json(['success' => true], 200);
         }
 
-        return $response;
+        return $next($request);
     }
 }

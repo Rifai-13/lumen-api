@@ -84,8 +84,9 @@ $app->middleware([
 ]);
 
 $app->routeMiddleware([
-    'auth'       => App\Http\Middleware\Authenticate::class,
-    'role'       => Spatie\Permission\Middleware\RoleMiddleware::class,
+    'auth'       => App\Http\Middleware\AuthenticateWithSession::class,
+    'role'       => App\Http\Middleware\CustomRoleMiddleware::class,
+     // 'role'    => Spatie\Permission\Middleware\RoleMiddleware::class, 
     'permission' => Spatie\Permission\Middleware\PermissionMiddleware::class,
 ]);
 

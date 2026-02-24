@@ -15,11 +15,27 @@ class RoleSeeder extends Seeder
 
         // Buat permissions
         $permissions = [
-            'view products', 'create products', 'edit products', 'delete products',
-            'view donations', 'create donations', 'edit donations', 'delete donations',
-            'view users', 'create users', 'edit users', 'delete users',
-            'manage user roles', 'assign permissions', 'view reports', 'export reports',
-            'view statistics', 'manage settings', 'view logs', 'manage roles', 'manage permissions'
+            'view products',
+            'create products',
+            'edit products',
+            'delete products',
+            'view donations',
+            'create donations',
+            'edit donations',
+            'delete donations',
+            'view users',
+            'create users',
+            'edit users',
+            'delete users',
+            'manage user roles',
+            'assign permissions',
+            'view reports',
+            'export reports',
+            'view statistics',
+            'manage settings',
+            'view logs',
+            'manage roles',
+            'manage permissions'
         ];
 
         foreach ($permissions as $permission) {
@@ -36,15 +52,24 @@ class RoleSeeder extends Seeder
         // Role Manager
         Role::firstOrCreate(['name' => 'manager', 'guard_name' => 'api'])
             ->syncPermissions([
-                'view products', 'create products', 'edit products', 'delete products',
-                'view donations', 'create donations', 'edit donations',
-                'view reports', 'export reports', 'view statistics'
+                'view products',
+                'create products',
+                'edit products',
+                'delete products',
+                'view donations',
+                'create donations',
+                'edit donations',
+                'view reports',
+                'export reports',
+                'view statistics'
             ]);
 
         // Role Staff
         Role::firstOrCreate(['name' => 'staff', 'guard_name' => 'api'])
             ->syncPermissions([
-                'view products', 'view donations', 'create donations'
+                'view products',
+                'view donations',
+                'create donations'
             ]);
     }
 }

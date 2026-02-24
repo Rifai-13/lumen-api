@@ -1,4 +1,5 @@
 <?php
+// database/seeders/AssignRoleToUserSeeder.php
 
 namespace Database\Seeders;
 
@@ -6,43 +7,41 @@ use Illuminate\Database\Seeder;
 use App\Models\User;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
+use Illuminate\Support\Facades\Log;
 
-class UserRoleSeeder extends Seeder
+class AssignRoleToUserSeeder extends Seeder
 {
-    public function run()
+    public function run(): void
     {
-        // Pastikan role manager sudah ada
-        $role = Role::firstOrCreate(['name' => 'manager']);
-
-        // Buat permission jika belum ada
-        $permissions = [
-            'edit products',
-            'create products',
-            'delete products',
-            'view reports'
-        ];
-
-        foreach ($permissions as $permName) {
-            $permission = Permission::firstOrCreate(['name' => $permName]);
-            // Hubungkan permission ke role
-            if (!$role->hasPermissionTo($permission)) {
-                $role->givePermissionTo($permission);
-            }
+        // Cari user berdasarkan email yang sudah ada di database
+        $user = User::where('email', 'rifai13@gmail.com')->first();
+        
+        if (!$user) {
+            $this->command->error('User with email rifai13@gmail.com not found!');
+            return;
         }
 
-        // Cari user
-        $user = User::where('email', 'rifai@gmail.com')->first();
-        if ($user) {
-            // Hapus role lama jika ada
-            $user->syncRoles([]); // Hapus semua role
-            $user->assignRole('manager'); // Assign role manager
-            
-            // Debug: cek role user
-            echo "User: " . $user->email . "\n";
-            echo "Roles: " . implode(', ', $user->getRoleNames()->toArray()) . "\n";
-            echo "Permissions: " . implode(', ', $user->getAllPermissions()->pluck('name')->toArray()) . "\n";
+        // Pastikan role admin sudah ada
+        $adminRole = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'api']);
+        
+        // Assign role admin ke user
+        if (!$user->hasRole('admin')) {
+            $user->assignRole('admin');
+            $this->command->info('Role admin berhasil diberikan ke user: ' . $user->email);
         } else {
-            echo "User with email rifai@gmail.com not found!\n";
+            $this->command->info('User sudah memiliki role admin');
         }
+
+        // Debug: tampilkan role dan permissions user
+        $this->command->info('User: ' . $user->email);
+        $this->command->info('Roles: ' . implode(', ', $user->getRoleNames()->toArray()));
+        $this->command->info('Permissions: ' . implode(', ', $user->getAllPermissions()->pluck('name')->toArray()));
+        
+        // Log untuk debugging
+        Log::info('Role assigned via seeder', [
+            'user_id' => $user->id,
+            'email' => $user->email,
+            'roles' => $user->getRoleNames()->toArray()
+        ]);
     }
 }
