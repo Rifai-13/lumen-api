@@ -354,18 +354,14 @@ class UserController extends Controller
     public function getPermissions()
     {
         try {
-            $permissions = Permission::all()->groupBy(function ($permission) {
-                // Group by module (first word of permission)
-                $parts = explode(' ', $permission->name);
-                return $parts[0] ?? 'Other';
-            })->map(function ($group) {
-                return $group->map(function ($permission) {
-                    return [
-                        'id' => $permission->id,
-                        'name' => $permission->name,
-                        'module' => explode(' ', $permission->name)[0] ?? 'Other'
-                    ];
-                });
+            $permissions = Permission::all()->map(function ($permission) {
+                return [
+                    'id' => $permission->id,
+                    'name' => $permission->name,
+                    'guard_name' => $permission->guard_name,
+                    'module' => explode('.', $permission->name)[0] ?? explode(' ', $permission->name)[1] ?? 'other',
+                    'action' => explode('.', $permission->name)[1] ?? explode(' ', $permission->name)[0] ?? 'unknown'
+                ];
             });
 
             return response()->json([
@@ -427,6 +423,10 @@ class UserController extends Controller
     public function assignPermissions(Request $request, $id)
     {
         try {
+            Log::info('========== ASSIGN PERMISSIONS ==========');
+            Log::info('User ID: ' . $id);
+            Log::info('Request permissions:', $request->permissions ?? []);
+
             $user = User::find($id);
 
             if (!$user) {
@@ -438,16 +438,36 @@ class UserController extends Controller
 
             $this->validate($request, [
                 'permissions' => 'required|array',
-                'permissions.*' => 'string|exists:permissions,name'
+                'permissions.*' => 'string'
             ]);
 
-            $user->syncPermissions($request->permissions);
+            $permissions = $request->permissions;
 
-            Log::info('Permissions assigned from dashboard:', [
-                'user_id' => $id,
-                'permissions_count' => count($request->permissions),
-                'assigned_by' => $request->auth_user->id ?? null
-            ]);
+            // Konversi format titik ke spasi jika perlu
+            $convertedPermissions = [];
+            foreach ($permissions as $perm) {
+                // Cek apakah permission ada di database
+                $dbPermission = Permission::where('name', $perm)->first();
+
+                if ($dbPermission) {
+                    $convertedPermissions[] = $dbPermission->name;
+                } else {
+                    // Coba konversi dari format titik ke spasi
+                    $parts = explode('.', $perm);
+                    if (count($parts) == 2) {
+                        $alternativeName = $parts[1] . ' ' . $parts[0];
+                        $dbPermission = Permission::where('name', $alternativeName)->first();
+                        if ($dbPermission) {
+                            $convertedPermissions[] = $dbPermission->name;
+                        }
+                    }
+                }
+            }
+
+            Log::info('Converted permissions:', $convertedPermissions);
+
+            // Sync permissions
+            $user->syncPermissions($convertedPermissions);
 
             return response()->json([
                 'success' => true,
@@ -460,7 +480,7 @@ class UserController extends Controller
             Log::error('Error assigning permissions: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to assign permissions'
+                'message' => 'Failed to assign permissions: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -480,42 +500,22 @@ class UserController extends Controller
                 ], 404);
             }
 
-            $allPermissions = Permission::all()->groupBy(function ($permission) {
-                return explode(' ', $permission->name)[0] ?? 'Other';
-            });
-
+            // Dapatkan semua permissions user
             $userPermissions = $user->getAllPermissions()->pluck('name')->toArray();
 
-            $formattedPermissions = [];
-            foreach ($allPermissions as $module => $perms) {
-                foreach ($perms as $perm) {
-                    $action = explode(' ', $perm->name)[1] ?? 'unknown';
-                    if (!isset($formattedPermissions[$module])) {
-                        $formattedPermissions[$module] = [
-                            'create' => false,
-                            'edit' => false,
-                            'delete' => false,
-                            'view' => false
-                        ];
-                    }
+            Log::info('User permissions:', $userPermissions);
 
-                    if (in_array($perm->name, $userPermissions)) {
-                        switch ($action) {
-                            case 'create':
-                                $formattedPermissions[$module]['create'] = true;
-                                break;
-                            case 'edit':
-                                $formattedPermissions[$module]['edit'] = true;
-                                break;
-                            case 'delete':
-                                $formattedPermissions[$module]['delete'] = true;
-                                break;
-                            case 'view':
-                                $formattedPermissions[$module]['view'] = true;
-                                break;
-                        }
-                    }
-                }
+            // Format permissions sesuai module
+            $modules = ['campaigns', 'donations', 'donors', 'events', 'reports', 'users', 'settings'];
+            $formattedPermissions = [];
+
+            foreach ($modules as $module) {
+                $formattedPermissions[$module] = [
+                    'create' => in_array($module . '.create', $userPermissions) || in_array('create ' . $module, $userPermissions) || in_array('create_' . $module, $userPermissions),
+                    'edit' => in_array($module . '.edit', $userPermissions) || in_array('edit ' . $module, $userPermissions) || in_array('edit_' . $module, $userPermissions),
+                    'delete' => in_array($module . '.delete', $userPermissions) || in_array('delete ' . $module, $userPermissions) || in_array('delete_' . $module, $userPermissions),
+                    'view' => in_array($module . '.view', $userPermissions) || in_array('view ' . $module, $userPermissions) || in_array('view_' . $module, $userPermissions),
+                ];
             }
 
             return response()->json([
