@@ -95,47 +95,30 @@ class CampaignController extends Controller
     {
         // Admin selalu punya akses
         if ($user->role === 'admin') {
-            Log::info("✅ Admin has access to {$action} {$module}");
             return true;
         }
 
-        // HAPUS BLOK INI - JANGAN BERI AKSES OTOMATIS KE MANAGER
-        // if ($user->role === 'manager' && $module === 'campaigns') {
-        //     Log::info("✅ Manager has access to {$action} {$module}");
-        //     return true;
-        // }
+        // Ambil permissions dari database LANGSUNG
+        $userPermissions = $user->getAllPermissions()->pluck('name')->toArray();
 
-        // Format permission yang akan dicek
+        Log::info("Checking {$action} {$module} for user {$user->id}");
+        Log::info("User permissions:", $userPermissions);
+
+        // Format yang akan dicek
         $formats = [
-            "{$action} {$module}",  // "edit campaigns"
-            "{$module}.{$action}",  // "campaigns.edit"
-            "{$action}_{$module}",  // "edit_campaigns"
-            $action                  // "edit"
+            "{$action}_{$module}",
+            "{$action} {$module}",
+            "{$module}.{$action}",
         ];
 
-        Log::info("🔍 Checking permissions for {$action} {$module}", [
-            'formats' => $formats,
-            'user_permissions' => $user->getAllPermissions()->pluck('name')
-        ]);
-
         foreach ($formats as $format) {
-            try {
-                if ($user->hasPermissionTo($format)) {
-                    Log::info("✅ User has permission: {$format}");
-                    return true;
-                }
-            } catch (\Spatie\Permission\Exceptions\PermissionDoesNotExist $e) {
-                // Permission tidak ada di database, lanjut ke format berikutnya
-                Log::info("Permission {$format} does not exist in database, trying next format");
-                continue;
-            } catch (\Exception $e) {
-                // Error lain, log dan lanjutkan
-                Log::warning("Error checking permission {$format}: " . $e->getMessage());
-                continue;
+            if (in_array($format, $userPermissions)) {
+                Log::info("✅ Found permission: {$format}");
+                return true;
             }
         }
 
-        Log::warning("❌ User lacks permission for {$action} {$module}");
+        Log::info("❌ No permission found for {$action} {$module}");
         return false;
     }
 
@@ -151,7 +134,7 @@ class CampaignController extends Controller
         try {
             // Dapatkan user dari middleware
             $user = $request->auth_user;
-            
+
             if (!$user) {
                 Log::error('No user found in request');
                 return response()->json([
@@ -260,7 +243,7 @@ class CampaignController extends Controller
         try {
             // Dapatkan user dari middleware
             $user = $request->auth_user;
-            
+
             if (!$user) {
                 Log::error('No user found in request');
                 return response()->json([
@@ -386,7 +369,7 @@ class CampaignController extends Controller
         try {
             // Dapatkan user dari middleware
             $user = request()->auth_user;
-            
+
             if (!$user) {
                 Log::error('No user found in request');
                 return response()->json([

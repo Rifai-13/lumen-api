@@ -103,28 +103,21 @@ class AuthController extends Controller
     public function me(Request $request)
     {
         try {
-            // Dapatkan user dari middleware
             $user = $request->auth_user;
 
             if (!$user) {
-                Log::warning('Me endpoint: No user found in request');
                 return response()->json([
                     'success' => false,
                     'message' => 'User not authenticated'
                 ], 401);
             }
 
-            // Get user role
-            $userRole = $this->getUserRole($user);
+            // Ambil permissions LANGSUNG dari database
+            $permissions = $user->getAllPermissions()->pluck('name')->toArray();
 
-            // Dapatkan permissions LENGKAP berdasarkan role
-            $permissions = $this->getPermissionsForRole($userRole);
-
-            Log::info('Me endpoint success:', [
-                'user_id' => $user->id,
-                'role' => $userRole,
-                'permissions_count' => count($permissions)
-            ]);
+            // Log untuk debugging
+            Log::info('Me endpoint - User: ' . $user->email);
+            Log::info('Permissions from database:', $permissions);
 
             return response()->json([
                 'success' => true,
@@ -132,8 +125,8 @@ class AuthController extends Controller
                     'id' => $user->id,
                     'name' => $user->name,
                     'email' => $user->email,
-                    'role' => $userRole,
-                    'permissions' => $permissions, // Pastikan ini dikirim
+                    'role' => $user->roles->first()->name ?? 'staff',
+                    'permissions' => $permissions, // PASTIKAN INI TERKIRIM
                     'avatar' => $user->avatar ?? null
                 ]
             ]);
