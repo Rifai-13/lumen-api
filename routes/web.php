@@ -23,19 +23,21 @@ $router->group(['middleware' => 'auth'], function () use ($router) {
     $router->get('/donations', 'DonationController@index');
     $router->post('/donations', 'DonationController@store');
     
-    // Campaigns - semua user bisa lihat
+    // CAMPAIGNS - semua user bisa lihat (berdasarkan permission)
     $router->get('/campaigns', 'CampaignController@index');
     $router->get('/campaigns/{id}', 'CampaignController@show');
     
-    // Campaigns - hanya admin/manager yang bisa edit
-    $router->group(['middleware' => 'role:admin,manager'], function () use ($router) {
-        $router->post('/campaigns', 'CampaignController@store');
-        $router->post('/campaigns/{id}', 'CampaignController@update');
-        $router->delete('/campaigns/{id}', 'CampaignController@destroy');
-    });
+    // CAMPAIGNS - Create (berdasarkan permission, bukan role)
+    $router->post('/campaigns', 'CampaignController@store');
+    
+    // CAMPAIGNS - Update (berdasarkan permission, bukan role)
+    $router->post('/campaigns/{id}', 'CampaignController@update');
+    
+    // CAMPAIGNS - Delete (berdasarkan permission, bukan role)
+    $router->delete('/campaigns/{id}', 'CampaignController@destroy');
     
     // ============= USER MANAGEMENT =============
-    // Hanya admin yang bisa manage users
+    // Hanya admin yang bisa manage users (tetap pakai role)
     $router->group(['middleware' => 'role:admin'], function () use ($router) {
         
         // User CRUD

@@ -416,7 +416,6 @@ class UserController extends Controller
             ], 500);
         }
     }
-
     /**
      * POST /users/{id}/assign-permissions - Assign permissions to user
      */
@@ -430,12 +429,16 @@ class UserController extends Controller
             $user = User::find($id);
 
             if (!$user) {
+                Log::error('User not found with ID: ' . $id);
                 return response()->json([
                     'success' => false,
                     'message' => 'User not found'
                 ], 404);
             }
 
+            Log::info('User found: ' . $user->email . ' (Role: ' . $user->role . ')');
+
+            // Validasi request
             $this->validate($request, [
                 'permissions' => 'required|array',
                 'permissions.*' => 'string'
@@ -443,44 +446,104 @@ class UserController extends Controller
 
             $permissions = $request->permissions;
 
-            // Konversi format titik ke spasi jika perlu
-            $convertedPermissions = [];
-            foreach ($permissions as $perm) {
-                // Cek apakah permission ada di database
-                $dbPermission = Permission::where('name', $perm)->first();
+            // Hapus duplicate
+            $permissions = array_unique($permissions);
 
+            Log::info('Unique permissions to assign:', $permissions);
+
+            // Konversi ke format yang ada di database
+            $validPermissionIds = [];
+            $validPermissionNames = [];
+
+            foreach ($permissions as $perm) {
+                // Cek di database (case sensitive)
+                $dbPermission = Permission::where('name', $perm)->first();
                 if ($dbPermission) {
-                    $convertedPermissions[] = $dbPermission->name;
-                } else {
-                    // Coba konversi dari format titik ke spasi
+                    $validPermissionIds[] = $dbPermission->id;
+                    $validPermissionNames[] = $dbPermission->name;
+                    Log::info("✅ Found permission: {$perm} (ID: {$dbPermission->id})");
+                    continue;
+                }
+
+                // Coba tanpa titik (campaigns.create -> create campaigns)
+                $withoutDot = str_replace('.', ' ', $perm);
+                if ($withoutDot !== $perm) {
+                    $dbPermission = Permission::where('name', $withoutDot)->first();
+                    if ($dbPermission) {
+                        $validPermissionIds[] = $dbPermission->id;
+                        $validPermissionNames[] = $dbPermission->name;
+                        Log::info("✅ Found without dot: {$withoutDot} (ID: {$dbPermission->id})");
+                        continue;
+                    }
+                }
+
+                // Coba tanpa underscore (create_campaigns -> create campaigns)
+                $withoutUnderscore = str_replace('_', ' ', $perm);
+                if ($withoutUnderscore !== $perm) {
+                    $dbPermission = Permission::where('name', $withoutUnderscore)->first();
+                    if ($dbPermission) {
+                        $validPermissionIds[] = $dbPermission->id;
+                        $validPermissionNames[] = $dbPermission->name;
+                        Log::info("✅ Found without underscore: {$withoutUnderscore} (ID: {$dbPermission->id})");
+                        continue;
+                    }
+                }
+
+                // Coba format terbalik (campaigns.create -> create campaigns)
+                if (strpos($perm, '.') !== false) {
                     $parts = explode('.', $perm);
                     if (count($parts) == 2) {
-                        $alternativeName = $parts[1] . ' ' . $parts[0];
-                        $dbPermission = Permission::where('name', $alternativeName)->first();
+                        $reversed = $parts[1] . ' ' . $parts[0];
+                        $dbPermission = Permission::where('name', $reversed)->first();
                         if ($dbPermission) {
-                            $convertedPermissions[] = $dbPermission->name;
+                            $validPermissionIds[] = $dbPermission->id;
+                            $validPermissionNames[] = $dbPermission->name;
+                            Log::info("✅ Found reversed dot: {$reversed} (ID: {$dbPermission->id})");
+                            continue;
                         }
                     }
                 }
+
+                Log::warning("❌ Permission not found: {$perm}");
             }
 
-            Log::info('Converted permissions:', $convertedPermissions);
+            Log::info('Valid permission IDs:', $validPermissionIds);
+            Log::info('Valid permission names:', $validPermissionNames);
 
-            // Sync permissions
-            $user->syncPermissions($convertedPermissions);
+            if (empty($validPermissionIds)) {
+                Log::warning('No valid permissions found, clearing all');
+                $user->syncPermissions([]);
+
+                return response()->json([
+                    'success' => true,
+                    'message' => 'All permissions removed',
+                    'data' => [
+                        'permissions' => []
+                    ]
+                ]);
+            }
+
+            // GUNAKAN syncPermissions DENGAN ID
+            $user->syncPermissions($validPermissionIds);
+
+            // Refresh user permissions
+            $user->load('permissions');
+
+            $finalPermissions = $user->getAllPermissions()->pluck('name')->toArray();
+            Log::info('✅ Final permissions:', $finalPermissions);
 
             return response()->json([
                 'success' => true,
                 'message' => 'Permissions assigned successfully',
                 'data' => [
-                    'permissions' => $user->getAllPermissions()->pluck('name')
+                    'permissions' => $finalPermissions
                 ]
             ]);
         } catch (\Exception $e) {
-            Log::error('Error assigning permissions: ' . $e->getMessage());
+            Log::error('❌ Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to assign permissions: ' . $e->getMessage()
+                'message' => 'Failed: ' . $e->getMessage()
             ], 500);
         }
     }
@@ -500,21 +563,21 @@ class UserController extends Controller
                 ], 404);
             }
 
-            // Dapatkan semua permissions user
+            // Ambil langsung dari database via Spatie
             $userPermissions = $user->getAllPermissions()->pluck('name')->toArray();
 
-            Log::info('User permissions:', $userPermissions);
+            Log::info('User permissions for ' . $user->email, $userPermissions);
 
-            // Format permissions sesuai module
+            // Format untuk frontend
             $modules = ['campaigns', 'donations', 'donors', 'events', 'reports', 'users', 'settings'];
             $formattedPermissions = [];
 
             foreach ($modules as $module) {
                 $formattedPermissions[$module] = [
-                    'create' => in_array($module . '.create', $userPermissions) || in_array('create ' . $module, $userPermissions) || in_array('create_' . $module, $userPermissions),
-                    'edit' => in_array($module . '.edit', $userPermissions) || in_array('edit ' . $module, $userPermissions) || in_array('edit_' . $module, $userPermissions),
-                    'delete' => in_array($module . '.delete', $userPermissions) || in_array('delete ' . $module, $userPermissions) || in_array('delete_' . $module, $userPermissions),
-                    'view' => in_array($module . '.view', $userPermissions) || in_array('view ' . $module, $userPermissions) || in_array('view_' . $module, $userPermissions),
+                    'create' => $this->hasPermission($userPermissions, $module, 'create'),
+                    'edit' => $this->hasPermission($userPermissions, $module, 'edit'),
+                    'delete' => $this->hasPermission($userPermissions, $module, 'delete'),
+                    'view' => $this->hasPermission($userPermissions, $module, 'view'),
                 ];
             }
 
@@ -523,11 +586,31 @@ class UserController extends Controller
                 'data' => $formattedPermissions
             ]);
         } catch (\Exception $e) {
-            Log::error('Error fetching user permissions: ' . $e->getMessage());
+            Log::error('Error: ' . $e->getMessage());
             return response()->json([
                 'success' => false,
-                'message' => 'Failed to fetch user permissions'
+                'message' => 'Failed to fetch permissions'
             ], 500);
         }
+    }
+
+    /**
+     * Helper untuk cek permission
+     */
+    private function hasPermission($userPermissions, $module, $action)
+    {
+        $formats = [
+            "{$action} {$module}",
+            "{$module}.{$action}",
+            "{$action}_{$module}",
+        ];
+
+        foreach ($formats as $format) {
+            if (in_array($format, $userPermissions)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 }

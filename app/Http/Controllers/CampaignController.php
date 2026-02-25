@@ -61,52 +61,6 @@ class CampaignController extends Controller
     }
 
     /**
-     * GET /campaigns/stats - Get campaign statistics
-     */
-    public function getStats(Request $request)
-    {
-        try {
-            Log::info('Fetching campaign stats');
-
-            $totalCampaigns = Campaign::count();
-            $activeCampaigns = Campaign::where('status', 'Active')->count();
-            $totalRaised = Campaign::sum('raised') ?? 0;
-            $totalDonors = Campaign::sum('donors') ?? 0;
-
-            // Calculate average progress
-            $campaigns = Campaign::select('raised', 'goal')->get();
-            $totalProgress = 0;
-            $count = 0;
-
-            foreach ($campaigns as $campaign) {
-                if ($campaign->goal > 0) {
-                    $totalProgress += min(($campaign->raised / $campaign->goal) * 100, 100);
-                    $count++;
-                }
-            }
-
-            $averageProgress = $count > 0 ? round($totalProgress / $count, 2) : 0;
-
-            return response()->json([
-                'success' => true,
-                'data' => [
-                    'total_campaigns' => $totalCampaigns,
-                    'active_campaigns' => $activeCampaigns,
-                    'total_raised' => (float) $totalRaised,
-                    'total_donors' => (int) $totalDonors,
-                    'average_progress' => (float) $averageProgress
-                ]
-            ]);
-        } catch (\Exception $e) {
-            Log::error('Error fetching stats: ' . $e->getMessage());
-            return response()->json([
-                'success' => false,
-                'message' => 'Failed to fetch stats'
-            ], 500);
-        }
-    }
-
-    /**
      * GET /campaigns/{id} - Get single campaign
      */
     public function show($id)
@@ -135,6 +89,57 @@ class CampaignController extends Controller
     }
 
     /**
+     * Helper function untuk cek permission dengan berbagai format
+     */
+    private function checkPermission($user, $action, $module)
+    {
+        // Admin selalu punya akses
+        if ($user->role === 'admin') {
+            Log::info("✅ Admin has access to {$action} {$module}");
+            return true;
+        }
+
+        // HAPUS BLOK INI - JANGAN BERI AKSES OTOMATIS KE MANAGER
+        // if ($user->role === 'manager' && $module === 'campaigns') {
+        //     Log::info("✅ Manager has access to {$action} {$module}");
+        //     return true;
+        // }
+
+        // Format permission yang akan dicek
+        $formats = [
+            "{$action} {$module}",  // "edit campaigns"
+            "{$module}.{$action}",  // "campaigns.edit"
+            "{$action}_{$module}",  // "edit_campaigns"
+            $action                  // "edit"
+        ];
+
+        Log::info("🔍 Checking permissions for {$action} {$module}", [
+            'formats' => $formats,
+            'user_permissions' => $user->getAllPermissions()->pluck('name')
+        ]);
+
+        foreach ($formats as $format) {
+            try {
+                if ($user->hasPermissionTo($format)) {
+                    Log::info("✅ User has permission: {$format}");
+                    return true;
+                }
+            } catch (\Spatie\Permission\Exceptions\PermissionDoesNotExist $e) {
+                // Permission tidak ada di database, lanjut ke format berikutnya
+                Log::info("Permission {$format} does not exist in database, trying next format");
+                continue;
+            } catch (\Exception $e) {
+                // Error lain, log dan lanjutkan
+                Log::warning("Error checking permission {$format}: " . $e->getMessage());
+                continue;
+            }
+        }
+
+        Log::warning("❌ User lacks permission for {$action} {$module}");
+        return false;
+    }
+
+    /**
      * POST /campaigns - Create new campaign
      */
     public function store(Request $request)
@@ -144,6 +149,28 @@ class CampaignController extends Controller
         Log::info('Has file: ' . ($request->hasFile('image') ? 'YES' : 'NO'));
 
         try {
+            // Dapatkan user dari middleware
+            $user = $request->auth_user;
+            
+            if (!$user) {
+                Log::error('No user found in request');
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized - User not authenticated'
+                ], 401);
+            }
+
+            Log::info('User role: ' . $user->role);
+            Log::info('User ID: ' . $user->id);
+
+            // CEK PERMISSION CREATE CAMPAIGN
+            if (!$this->checkPermission($user, 'create', 'campaigns')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized - insufficient permission to create campaigns'
+                ], 403);
+            }
+
             $validator = Validator::make($request->all(), [
                 'name' => 'required|string|max:255',
                 'description' => 'nullable|string',
@@ -231,6 +258,28 @@ class CampaignController extends Controller
         Log::info('Has file: ' . ($request->hasFile('image') ? 'YES' : 'NO'));
 
         try {
+            // Dapatkan user dari middleware
+            $user = $request->auth_user;
+            
+            if (!$user) {
+                Log::error('No user found in request');
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized - User not authenticated'
+                ], 401);
+            }
+
+            Log::info('User role: ' . $user->role);
+            Log::info('User ID: ' . $user->id);
+
+            // CEK PERMISSION EDIT CAMPAIGN
+            if (!$this->checkPermission($user, 'edit', 'campaigns')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized - insufficient permission to edit campaigns'
+                ], 403);
+            }
+
             $campaign = Campaign::find($id);
 
             if (!$campaign) {
@@ -335,6 +384,28 @@ class CampaignController extends Controller
     public function destroy($id)
     {
         try {
+            // Dapatkan user dari middleware
+            $user = request()->auth_user;
+            
+            if (!$user) {
+                Log::error('No user found in request');
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized - User not authenticated'
+                ], 401);
+            }
+
+            Log::info('User role: ' . $user->role);
+            Log::info('User ID: ' . $user->id);
+
+            // CEK PERMISSION DELETE CAMPAIGN
+            if (!$this->checkPermission($user, 'delete', 'campaigns')) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Unauthorized - insufficient permission to delete campaigns'
+                ], 403);
+            }
+
             $campaign = Campaign::find($id);
 
             if (!$campaign) {
@@ -368,8 +439,6 @@ class CampaignController extends Controller
             ], 500);
         }
     }
-
-    // app/Http/Controllers/CampaignController.php
 
     /**
      * GET /public/campaigns - List all campaigns for public (no auth required)

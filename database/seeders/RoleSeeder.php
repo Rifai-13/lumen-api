@@ -6,6 +6,7 @@ namespace Database\Seeders;
 use Illuminate\Database\Seeder;
 use Spatie\Permission\Models\Role;
 use Spatie\Permission\Models\Permission;
+use App\Models\User;
 
 class RoleSeeder extends Seeder
 {
@@ -15,27 +16,49 @@ class RoleSeeder extends Seeder
 
         // Buat permissions
         $permissions = [
-            'view products',
-            'create products',
-            'edit products',
-            'delete products',
+            // Campaign permissions
+            'view campaigns',
+            'create campaigns',
+            'edit campaigns',
+            'delete campaigns',
+            'campaigns.view',
+            'campaigns.create',
+            'campaigns.edit',
+            'campaigns.delete',
+            
+            // Donation permissions
             'view donations',
             'create donations',
             'edit donations',
             'delete donations',
+            'donations.view',
+            'donations.create',
+            'donations.edit',
+            'donations.delete',
+            
+            // User permissions
             'view users',
             'create users',
             'edit users',
             'delete users',
-            'manage user roles',
-            'assign permissions',
+            'manage users',
+            'users.view',
+            'users.create',
+            'users.edit',
+            'users.delete',
+            
+            // Report permissions
             'view reports',
             'export reports',
-            'view statistics',
-            'manage settings',
-            'view logs',
-            'manage roles',
-            'manage permissions'
+            'reports.view',
+            'reports.export',
+            
+            // Setting permissions
+            'view settings',
+            'edit settings',
+            'settings.view',
+            'settings.edit',
+            'manage_settings',
         ];
 
         foreach ($permissions as $permission) {
@@ -45,31 +68,46 @@ class RoleSeeder extends Seeder
             ]);
         }
 
-        // Role Admin - semua permissions
-        Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'api'])
-            ->syncPermissions(Permission::all());
+        // Buat roles
+        $adminRole = Role::firstOrCreate(['name' => 'admin', 'guard_name' => 'api']);
+        $managerRole = Role::firstOrCreate(['name' => 'manager', 'guard_name' => 'api']);
+        $staffRole = Role::firstOrCreate(['name' => 'staff', 'guard_name' => 'api']);
 
-        // Role Manager
-        Role::firstOrCreate(['name' => 'manager', 'guard_name' => 'api'])
-            ->syncPermissions([
-                'view products',
-                'create products',
-                'edit products',
-                'delete products',
-                'view donations',
-                'create donations',
-                'edit donations',
-                'view reports',
-                'export reports',
-                'view statistics'
-            ]);
+        // Assign permissions ke roles
+        $adminRole->syncPermissions(Permission::all());
 
-        // Role Staff
-        Role::firstOrCreate(['name' => 'staff', 'guard_name' => 'api'])
-            ->syncPermissions([
-                'view products',
-                'view donations',
-                'create donations'
-            ]);
+        $managerRole->syncPermissions([
+            'view campaigns',
+            'create campaigns',
+            'edit campaigns',
+            'delete campaigns',
+            'campaigns.view',
+            'campaigns.create',
+            'campaigns.edit',
+            'campaigns.delete',
+            'view donations',
+            'view reports',
+            'export reports',
+        ]);
+
+        $staffRole->syncPermissions([
+            'view campaigns',
+            'campaigns.view',
+            'view donations',
+        ]);
+
+        // Assign role ke user SUPER ADMIN - PASTIKAN EMAILNYA BENAR
+        $superAdmin = User::where('email', 'rifai13@gmail.com')->first();
+        if ($superAdmin) {
+            // Hanya assign role admin jika belum punya
+            if (!$superAdmin->hasRole('admin')) {
+                $superAdmin->assignRole('admin');
+                echo "✅ Super Admin assigned admin role\n";
+            } else {
+                echo "✅ Super Admin already has admin role\n";
+            }
+        } else {
+            echo "❌ Super Admin not found!\n";
+        }
     }
 }
