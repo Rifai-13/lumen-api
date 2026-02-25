@@ -569,7 +569,7 @@ class UserController extends Controller
             Log::info('User permissions for ' . $user->email, $userPermissions);
 
             // Format untuk frontend
-            $modules = ['campaigns', 'donations', 'donors', 'events', 'reports', 'users', 'settings'];
+            $modules = ['campaigns', 'donations', 'donors','reports', 'users'];
             $formattedPermissions = [];
 
             foreach ($modules as $module) {
