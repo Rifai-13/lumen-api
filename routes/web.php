@@ -7,11 +7,19 @@ $router->get('/', function () use ($router) {
     return $router->app->version();
 });
 
-// Public routes
+// Public routes (no auth required)
 $router->post('/login', 'AuthController@login');
-$router->get('/public/campaigns', 'CampaignController@publicIndex');
 
-// Protected routes
+// ============= PUBLIC API ROUTES =============
+$router->group(['prefix' => 'public'], function () use ($router) {
+    // Public campaigns
+    $router->get('/campaigns', 'CampaignController@publicIndex');
+    
+    // Public donations
+    $router->post('/donations', 'PublicDonationController@store');
+});
+
+// ============= PROTECTED ROUTES (Require Auth) =============
 $router->group(['middleware' => 'auth'], function () use ($router) {
     
     // Auth
