@@ -43,25 +43,22 @@ $router->group(['middleware' => 'auth'], function () use ($router) {
     
     // CAMPAIGNS - Delete (berdasarkan permission, bukan role)
     $router->delete('/campaigns/{id}', 'CampaignController@destroy');
-    
+    // User CRUD
     // ============= USER MANAGEMENT =============
+    $router->get('/users', 'UserController@index');
+    $router->post('/users', 'UserController@store');
+    $router->get('/users/{id}', 'UserController@show');
+    $router->put('/users/{id}', 'UserController@update');
+    
+    // Roles & Permissions (for dropdown)
+    $router->get('/roles', 'UserController@getRoles');
     // Hanya admin yang bisa manage users (tetap pakai role)
     $router->group(['middleware' => 'role:admin'], function () use ($router) {
-        
-        // User CRUD
-        $router->get('/users', 'UserController@index');
-        $router->post('/users', 'UserController@store');
-        $router->get('/users/{id}', 'UserController@show');
-        $router->put('/users/{id}', 'UserController@update');
-        $router->delete('/users/{id}', 'UserController@destroy');
-        
         // Get user permissions
         $router->get('/users/{id}/permissions', 'UserController@getUserPermissions');
         
-        // Roles & Permissions (for dropdown)
-        $router->get('/roles', 'UserController@getRoles');
         $router->get('/permissions', 'UserController@getPermissions');
-        
+        $router->delete('/users/{id}', 'UserController@destroy');
         // Assign role & permissions
         $router->post('/users/{id}/assign-role', 'UserController@assignRole');
         $router->post('/users/{id}/assign-permissions', 'UserController@assignPermissions');

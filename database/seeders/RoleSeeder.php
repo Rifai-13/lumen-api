@@ -52,13 +52,6 @@ class RoleSeeder extends Seeder
             'export reports',
             'reports.view',
             'reports.export',
-            
-            // Setting permissions
-            'view settings',
-            'edit settings',
-            'settings.view',
-            'settings.edit',
-            'manage_settings',
         ];
 
         foreach ($permissions as $permission) {

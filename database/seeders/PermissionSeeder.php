@@ -18,13 +18,8 @@ class PermissionSeeder extends Seeder
         $modules = [
             'campaigns',
             'donations',
-            'donors',
-            'events',
             'reports',
             'users',
-            'settings',
-            'inventory',
-            'products'
         ];
 
         // Daftar actions
@@ -58,7 +53,7 @@ class PermissionSeeder extends Seeder
             'export_data',
             'import_data',
             'view_stats',
-            'manage_settings',
+            // 'manage_settings',
             'manage_users'
         ];
 
