@@ -289,6 +289,32 @@ class DonationController extends Controller
         }
     }
 
+    public function updateStatus(Request $request, $id)
+    {
+        try {
+            $donation = Donation::findOrFail($id);
+            $oldStatus = $donation->status;
+            $newStatus = $request->input('status');
+
+            $donation->status = $newStatus;
+            $donation->save();
+
+            // Jika status berubah menjadi success, update campaign
+            if ($oldStatus != 'success' && $newStatus == 'success') {
+                $campaign = Campaign::find($donation->campaign_id);
+                if ($campaign) {
+                    $campaign->raised = ($campaign->raised ?? 0) + $donation->amount;
+                    $campaign->donors = ($campaign->donors ?? 0) + 1; // atau hitung unik berdasarkan email
+                    $campaign->save();
+                }
+            }
+
+            return response()->json(['success' => true, 'message' => 'Status updated']);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+
     /**
      * Store a new donation (for admin/manual entry)
      */
@@ -317,7 +343,7 @@ class DonationController extends Controller
                 'status' => 'sometimes|in:pending,success,failed',
                 'notes' => 'nullable|string',
                 // 🔥 TAMBAH VALIDASI UNTUK TRANSACTION ID
-                'transaction_id' => 'nullable|string|max:255' 
+                'transaction_id' => 'nullable|string|max:255'
             ]);
 
             // 🔥 PERBAIKAN: Ambil ID dari request, jika kosong baru bikin TRX baru

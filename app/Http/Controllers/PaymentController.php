@@ -164,18 +164,41 @@ class PaymentController extends Controller
             // Xendit mengirim status 'PAID' atau 'SETTLED' untuk pembayaran sukses
             if ($status === 'PAID' || $status === 'SETTLED') {
 
-                // SESUAIKAN: Nama tabel 'donations', cari di kolom 'transaction_id'
-                $updated = DB::table('donations')
-                    ->where('transaction_id', $externalId)
-                    ->update([
-                        'status' => 'success',
-                        'updated_at' => Carbon::now() // ✅ Gunakan Carbon
-                    ]);
+                // 1. Cari data donasi terlebih dahulu
+                $donation = DB::table('donations')->where('transaction_id', $externalId)->first();
 
-                if ($updated) {
-                    Log::info("Donation $externalId successfully updated to success.");
+                if ($donation) {
+                    // Cegah "Double Update" jika statusnya sudah success (berjaga-jaga jika Xendit kirim webhook 2x)
+                    if ($donation->status !== 'success') {
+
+                        // 2. Update status donasi menjadi success
+                        DB::table('donations')
+                            ->where('transaction_id', $externalId)
+                            ->update([
+                                'status' => 'success',
+                                'updated_at' => Carbon::now()
+                            ]);
+
+                        Log::info("Donation $externalId successfully updated to success.");
+
+                        // 3. UPDATE PROGRESS CAMPAIGN (Raised & Donors)
+                        // Karena di tabel donations kamu menyimpan nama campaign di kolom 'campaign'
+                        $campaign = \App\Models\Campaign::where('name', $donation->campaign)->first();
+
+                        if ($campaign) {
+                            $campaign->raised = ($campaign->raised ?? 0) + $donation->amount;
+                            $campaign->donors = ($campaign->donors ?? 0) + 1;
+                            $campaign->save();
+
+                            Log::info("Campaign '{$campaign->name}' updated! Total Raised: {$campaign->raised}");
+                        } else {
+                            Log::warning("Campaign dengan nama '{$donation->campaign}' tidak ditemukan!");
+                        }
+                    } else {
+                        Log::info("Donation $externalId is already success. Ignored.");
+                    }
                 } else {
-                    // Jika 0, berarti ID DON-... tidak ditemukan di database
+                    // Jika ID DON-... tidak ditemukan di database
                     Log::warning("Donation $externalId not found in database.");
                 }
             }
