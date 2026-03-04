@@ -37,7 +37,11 @@ class PublicDonationController extends Controller
             }
 
             // Generate transaction ID
-            $transactionId = 'TRX' . time() . rand(100, 999);
+            $transactionId = $request->input('transaction_id');
+
+            if (!$transactionId) {
+                return response()->json(['message' => 'Transaction ID dari Xendit tidak ditemukan'], 400);
+            }
 
             // Create donation
             $donation = Donation::create([
@@ -62,10 +66,9 @@ class PublicDonationController extends Controller
                 'donation' => $donation,
                 'payment_instructions' => $paymentInstructions
             ], 201);
-
         } catch (\Exception $e) {
             Log::error('Public donation error: ' . $e->getMessage());
-            
+
             return response()->json([
                 'success' => false,
                 'message' => 'Failed to create donation: ' . $e->getMessage()

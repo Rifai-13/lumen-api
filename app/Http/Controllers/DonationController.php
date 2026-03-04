@@ -297,12 +297,13 @@ class DonationController extends Controller
         try {
             $user = $request->auth_user;
 
-            if (!$user) {
-                return response()->json([
-                    'success' => false,
-                    'message' => 'Unauthorized'
-                ], 401);
-            }
+            // Jika route ini butuh Auth, aktifkan. Tapi kalau ini dipakai user publik, abaikan auth check ini.
+            // if (!$user) {
+            //     return response()->json([
+            //         'success' => false,
+            //         'message' => 'Unauthorized'
+            //     ], 401);
+            // }
 
             // Validasi
             $validated = $request->validate([
@@ -314,11 +315,13 @@ class DonationController extends Controller
                 'payment_method' => 'required|string|max:50',
                 'payment_provider' => 'required|string|max:50',
                 'status' => 'sometimes|in:pending,success,failed',
-                'notes' => 'nullable|string'
+                'notes' => 'nullable|string',
+                // 🔥 TAMBAH VALIDASI UNTUK TRANSACTION ID
+                'transaction_id' => 'nullable|string|max:255' 
             ]);
 
-            // Generate transaction ID
-            $transactionId = 'TRX' . time() . rand(100, 999);
+            // 🔥 PERBAIKAN: Ambil ID dari request, jika kosong baru bikin TRX baru
+            $transactionId = $request->input('transaction_id') ?? ('TRX' . time() . rand(100, 999));
 
             // Create donation
             $donation = Donation::create([
@@ -331,7 +334,7 @@ class DonationController extends Controller
                 'payment_provider' => $validated['payment_provider'],
                 'notes' => $validated['notes'] ?? null,
                 'status' => $validated['status'] ?? 'pending',
-                'transaction_id' => $transactionId
+                'transaction_id' => $transactionId // Simpan ID Xendit ke sini!
             ]);
 
             return response()->json([
