@@ -118,10 +118,12 @@ class DonationController extends Controller
                 ->limit(5)
                 ->get()
                 ->map(function ($item) {
+                    $campaignData = \App\Models\Campaign::where('name', $item->campaign)->first();
                     return [
                         'campaign_name' => $item->campaign,
                         'donation_count' => $item->donation_count,
-                        'total_amount' => $item->total_amount
+                        'total_amount' => $item->total_amount,
+                        'goal' => $campaignData ? (float) $campaignData->goal : 0,
                     ];
                 });
 
@@ -144,6 +146,8 @@ class DonationController extends Controller
             return response()->json([
                 'success' => true,
                 'data' => [
+                    'total_donations' => (int) $totalDonations, 
+                    'total_amount' => (float) $totalAmount,
                     'total_revenue' => (float) $totalAmount,
                     'total_donors' => (int) $totalDonors,
                     'success_rate' => (float) $successRate,
@@ -342,11 +346,9 @@ class DonationController extends Controller
                 'payment_provider' => 'required|string|max:50',
                 'status' => 'sometimes|in:pending,success,failed',
                 'notes' => 'nullable|string',
-                // 🔥 TAMBAH VALIDASI UNTUK TRANSACTION ID
                 'transaction_id' => 'nullable|string|max:255'
             ]);
-
-            // 🔥 PERBAIKAN: Ambil ID dari request, jika kosong baru bikin TRX baru
+            
             $transactionId = $request->input('transaction_id') ?? ('TRX' . time() . rand(100, 999));
 
             // Create donation
@@ -360,7 +362,7 @@ class DonationController extends Controller
                 'payment_provider' => $validated['payment_provider'],
                 'notes' => $validated['notes'] ?? null,
                 'status' => $validated['status'] ?? 'pending',
-                'transaction_id' => $transactionId // Simpan ID Xendit ke sini!
+                'transaction_id' => $transactionId
             ]);
 
             return response()->json([

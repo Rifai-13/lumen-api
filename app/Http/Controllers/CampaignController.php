@@ -34,10 +34,18 @@ class CampaignController extends Controller
 
             // Status filter
             if ($request->has('status') && $request->status !== 'all') {
-                $query->where('status', $request->status);
+                $today = \Carbon\Carbon::today()->toDateString();
+
+                if ($request->status === 'Expired') {
+                    $query->whereDate('end_date', '<', $today);
+                } elseif ($request->status === 'Active') {
+                    $query->where('status', 'Active')
+                        ->whereDate('end_date', '>=', $today);
+                } else {
+                    $query->where('status', $request->status);
+                }
             }
 
-            // Pagination
             $perPage = $request->get('per_page', 10);
             $campaigns = $query->orderBy('created_at', 'desc')->paginate($perPage);
 
@@ -205,7 +213,7 @@ class CampaignController extends Controller
                 'goal' => $request->goal,
                 'raised' => 0,
                 'donors' => 0,
-                'status' => 'Active',
+                'status' => 'Active' || 'Inactive' || 'Expired',
                 'start_date' => $request->start_date,
                 'end_date' => $request->end_date,
                 'image' => $imagePath
@@ -434,7 +442,7 @@ class CampaignController extends Controller
             $query = Campaign::query();
 
             // Hanya tampilkan campaign yang Active
-            $query->where('status', 'Active');
+            // $query->where('status', 'Active');
 
             // Search filter
             if ($request->has('search') && !empty($request->search)) {
